@@ -7,12 +7,6 @@ constraints:
 
   - Maximum ``max_concurrent`` requests in-flight at once.
   - Maximum ``max_requests_per_second`` requests *initiated* per second.
-  - Retry transient failures (HTTP 5xx) up to 3 times.
-    Do NOT retry client errors (4xx).
-  - Return a ``Result`` for every input URL — the function must never raise.
-  - Preserve input ordering: ``results[i]`` corresponds to ``urls[i]``.
-
-You may use ``aiohttp`` and the Python standard library.
 """
 
 from dataclasses import dataclass

@@ -75,9 +75,6 @@ async def main() -> None:
             else:
                 print(f"  [{i}] ???    {r!r}")
 
-        stats = _get("/stats")
-        print(f"\nServer stats: {json.dumps(stats, indent=2)}")
-
     except Exception as exc:
         elapsed = time.perf_counter() - start
         print(f"\nfetch_all raised after {elapsed:.2f}s: {exc}")

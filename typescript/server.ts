@@ -3,6 +3,7 @@ import express from "express";
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const RATE_LIMIT = parseInt(process.env.RATE_LIMIT || "20", 10);
+const MODE = parseInt(process.argv.find((a) => a.startsWith("--mode="))?.split("=")[1] ?? process.argv[process.argv.indexOf("--mode") + 1] ?? "1", 10) || 1;
 
 // ---------------------------------------------------------------------------
 // State

@@ -1,12 +1,12 @@
 # Fetch URL Challenge 
 
-The challenge: Implement a function that fetches a list of URLs concurrently with rate limiting, retries, and error handling.
+The challenge: Implement a function that fetches a list of URLs concurrently respecting the API limitations. 
 
 ## Guide
 
 ### Step 1: Setup
 
-This interview using a locally-running server running on `localhost:3000` that your solution code will communicate with. To start it, in a separate terminal type:
+This interview uses a locally-running server running on `localhost:3000` that your solution code will communicate with. To start it, in a separate terminal type:
 
 ```bash
 cd typescript
