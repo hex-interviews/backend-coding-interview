@@ -3,6 +3,7 @@ import express from "express";
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const RATE_LIMIT = parseInt(process.env.RATE_LIMIT || "20", 10);
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || "10", 10);
 const MODE = parseInt(process.argv.find((a) => a.startsWith("--mode="))?.split("=")[1] ?? process.argv[process.argv.indexOf("--mode") + 1] ?? "1", 10) || 1;
 
 // ---------------------------------------------------------------------------
@@ -22,12 +23,18 @@ let peakConcurrency = 0;
 /** Rate pressure tracking — peak requests in any 1-second window. */
 let peakWindowRequests = 0;
 
+/** Violation counters. */
+let rateLimitViolations = 0;
+let concurrencyViolations = 0;
+
 function resetState(): void {
   attemptCounts.clear();
   requestTimestamps.length = 0;
   inFlight = 0;
   peakConcurrency = 0;
   peakWindowRequests = 0;
+  rateLimitViolations = 0;
+  concurrencyViolations = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,64 +73,18 @@ function checkRateLimit(): { allowed: boolean; retryAfter?: number } {
 }
 
 // ---------------------------------------------------------------------------
-// Routes
+// Item response strategies
 // ---------------------------------------------------------------------------
 
-/** Returns the full list of item URLs. */
-app.get("/urls", (_req, res) => {
-  const urls = items.map((_, i) => `http://localhost:${PORT}/item/${i}`);
-  res.json(urls);
-});
+type ItemHandler = (id: number, attempts: number, res: express.Response) => void;
 
-/** Returns current rate-limiter pressure and per-item attempt counts. */
-app.get("/stats", (_req, res) => {
-  const now = Date.now();
-  const recentCount = requestTimestamps.filter((t) => t > now - 1000).length;
-  const attempts: Record<number, number> = {};
-  attemptCounts.forEach((v, k) => {
-    attempts[k] = v;
-  });
-  res.json({
-    rateLimit: RATE_LIMIT,
-    currentWindowRequests: recentCount,
-    peakConcurrency,
-    peakWindowRequests,
-    attemptCounts: attempts,
-  });
-});
+/** Mode 1 — all items succeed immediately. */
+function strategyAllSuccess(id: number, _attempts: number, res: express.Response): void {
+  res.json(items[id]);
+}
 
-/** Clears all server state between test runs. */
-app.post("/reset", (_req, res) => {
-  resetState();
-  res.json({ ok: true });
-});
-
-/** Serves a single item with mixed behaviour depending on the ID range. */
-app.get("/item/:id", (req, res) => {
-  const id = parseInt(req.params.id, 10);
-
-  if (isNaN(id) || id < 0 || id >= 100) {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-
-  // --- Rate-limit gate (does NOT count as an attempt) ---
-  const rateCheck = checkRateLimit();
-  if (!rateCheck.allowed) {
-    res.set("Retry-After", String(rateCheck.retryAfter));
-    res.status(429).json({ error: "Too Many Requests" });
-    return;
-  }
-
-  // --- Track concurrency ---
-  inFlight++;
-  if (inFlight > peakConcurrency) peakConcurrency = inFlight;
-  res.on("close", () => { inFlight--; });
-
-  // --- Track attempts ---
-  const attempts = (attemptCounts.get(id) || 0) + 1;
-  attemptCounts.set(id, attempts);
-
+/** Mode 2 — mixed errors and delays based on ID range. */
+function strategyMixed(id: number, attempts: number, res: express.Response): void {
   // IDs 95-99 → permanent 404
   if (id >= 95) {
     res.status(404).json({ error: "Not found" });
@@ -149,6 +110,84 @@ app.get("/item/:id", (req, res) => {
 
   // IDs 0-79 → fast normal responses
   res.json(items[id]);
+}
+
+const strategies: Record<number, ItemHandler> = {
+  1: strategyAllSuccess,
+  2: strategyMixed,
+};
+
+const itemStrategy: ItemHandler = strategies[MODE] ?? strategyMixed;
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+/** Returns the server-configured limits for the client to use. */
+app.get("/limits", (_req, res) => {
+  res.json({ maxRequestsPerSecond: RATE_LIMIT, maxConcurrent: MAX_CONCURRENT });
+});
+
+/** Returns the full list of item URLs. */
+app.get("/urls", (_req, res) => {
+  const urls = items.map((_, i) => `http://localhost:${PORT}/item/${i}`);
+  res.json(urls);
+});
+
+/** Returns current rate-limiter pressure and per-item attempt counts. */
+app.get("/stats", (_req, res) => {
+  const now = Date.now();
+  const recentCount = requestTimestamps.filter((t) => t > now - 1000).length;
+  const attempts: Record<number, number> = {};
+  attemptCounts.forEach((v, k) => {
+    attempts[k] = v;
+  });
+  res.json({
+    rateLimit: RATE_LIMIT,
+    currentWindowRequests: recentCount,
+    peakConcurrency,
+    peakWindowRequests,
+    rateLimitViolations,
+    concurrencyViolations,
+    attemptCounts: attempts,
+  });
+});
+
+/** Clears all server state between test runs. */
+app.post("/reset", (_req, res) => {
+  resetState();
+  res.json({ ok: true });
+});
+
+/** Serves a single item with mixed behaviour depending on the ID range. */
+app.get("/item/:id", (req, res) => {
+  const id = parseInt(req.params.id, 10);
+
+  if (isNaN(id) || id < 0 || id >= 100) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  // --- Rate-limit gate (does NOT count as an attempt) ---
+  const rateCheck = checkRateLimit();
+  if (!rateCheck.allowed) {
+    rateLimitViolations++;
+    res.set("Retry-After", String(rateCheck.retryAfter));
+    res.status(429).json({ error: "Too Many Requests" });
+    return;
+  }
+
+  // --- Track concurrency ---
+  inFlight++;
+  if (inFlight > peakConcurrency) peakConcurrency = inFlight;
+  if (inFlight > MAX_CONCURRENT) concurrencyViolations++;
+  res.on("close", () => { inFlight--; });
+
+  // --- Track attempts ---
+  const attempts = (attemptCounts.get(id) || 0) + 1;
+  attemptCounts.set(id, attempts);
+
+  itemStrategy(id, attempts, res);
 });
 
 // ---------------------------------------------------------------------------
