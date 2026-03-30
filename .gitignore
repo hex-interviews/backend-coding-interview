@@ -1,3 +1,4 @@
 *.pyc
 typescript/node_modules
+solution-impl.*
 

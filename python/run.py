@@ -44,6 +44,10 @@ async def main() -> None:
         print(f"Could not reach server at {SERVER}: {exc}")
         sys.exit(1)
 
+    limits = _get("/limits")
+    max_concurrent: int = limits["maxConcurrent"]
+    max_requests_per_second: int = limits["maxRequestsPerSecond"]
+
     _post("/reset")
 
     print(f"Solution: {solution_path}")
@@ -53,8 +57,8 @@ async def main() -> None:
     try:
         results = await fetch_all(
             urls,
-            max_concurrent=10,
-            max_requests_per_second=15,
+            max_concurrent=max_concurrent,
+            max_requests_per_second=max_requests_per_second,
         )
 
         elapsed = time.perf_counter() - start
@@ -75,12 +79,21 @@ async def main() -> None:
             else:
                 print(f"  [{i}] ???    {r!r}")
 
-        stats = _get("/stats")
-        print(f"\nServer stats: {json.dumps(stats, indent=2)}")
-
     except Exception as exc:
         elapsed = time.perf_counter() - start
         print(f"\nfetch_all raised after {elapsed:.2f}s: {exc}")
+        sys.exit(1)
+
+    stats = _get("/stats")
+    failed = False
+    if stats["rateLimitViolations"] > 0:
+        failed = True
+        print(f"FAIL: rate limit violated ({stats['rateLimitViolations']} requests rejected with 429)")
+    if stats["concurrencyViolations"] > 0:
+        failed = True
+        print(f"FAIL: concurrency limit violated ({stats['concurrencyViolations']} requests exceeded max {max_concurrent} in-flight)")
+
+    if failed:
         sys.exit(1)
 
 
