@@ -54,35 +54,27 @@ async def main() -> None:
     print(f"Fetching {len(urls)} URLs...\n")
 
     start = time.perf_counter()
+    count = 0
     try:
-        results = await fetch_all(
+        async for r in fetch_all(
             urls,
             max_concurrent=max_concurrent,
             max_requests_per_second=max_requests_per_second,
-        )
-
-        elapsed = time.perf_counter() - start
-
-        if not isinstance(results, list):
-            print(f"fetch_all returned {type(results).__name__}, expected list")
-            sys.exit(1)
-
-        print(f"Got {len(results)} results in {elapsed:.2f}s\n")
-
-        for i, r in enumerate(results):
-            if r is None:
-                print(f"  [{i}] None")
-            elif isinstance(r, Failure):
-                print(f"  [{i}] FAIL   {r.url} — {r.error}")
+        ):
+            count += 1
+            if isinstance(r, Failure):
+                print(f"  [{count}] FAIL   {r.url} — {r.error}")
             elif isinstance(r, Success):
-                print(f"  [{i}] OK     {r.url}")
+                print(f"  [{count}] OK     {r.url}")
             else:
-                print(f"  [{i}] ???    {r!r}")
-
+                print(f"  [{count}] ???    {r!r}")
     except Exception as exc:
         elapsed = time.perf_counter() - start
         print(f"\nfetch_all raised after {elapsed:.2f}s: {exc}")
         sys.exit(1)
+
+    elapsed = time.perf_counter() - start
+    print(f"\nGot {count} results in {elapsed:.2f}s")
 
     stats = _get("/stats")
     failed = False
@@ -95,6 +87,8 @@ async def main() -> None:
 
     if failed:
         sys.exit(1)
+    else:
+        print(stats)
 
 
 if __name__ == "__main__":

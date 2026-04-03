@@ -58,25 +58,23 @@ async def main() -> None:
     # Run candidate solution
     # ------------------------------------------------------------------
     start = time.perf_counter()
+    results_by_url: dict[str, object] = {}
     try:
-        results = await fetch_all(
+        async for r in fetch_all(
             urls,
             max_concurrent=10,
             max_requests_per_second=15,
-        )
+        ):
+            results_by_url[r.url] = r
     except Exception as exc:
         print(f"FAIL — fetch_all raised an exception: {exc}")
         sys.exit(1)
     elapsed = time.perf_counter() - start
 
-    # ------------------------------------------------------------------
-    # Validate return value
-    # ------------------------------------------------------------------
-    if not isinstance(results, list):
-        print(
-            f"FAIL — fetch_all must return a list, got {type(results).__name__}: {results!r}"
-        )
-        sys.exit(1)
+    results = [
+        results_by_url.get(url, Failure(url=url, error="URL was not fetched"))
+        for url in urls
+    ]
 
     # ------------------------------------------------------------------
     # Validate result shape
