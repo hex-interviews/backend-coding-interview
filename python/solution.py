@@ -37,7 +37,8 @@ async def fetch_all(
     *,
     max_concurrent: int,
     max_requests_per_second: int,
-) -> list[Result]:
-    """Fetch all URLs concurrently and return a Result for each, preserving order."""
+):
+    """Fetch all URLs concurrently, yielding a Result for each."""
     # TODO: implement
     raise NotImplementedError
+    yield  # makes this an async generator
