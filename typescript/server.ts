@@ -80,7 +80,7 @@ type ItemHandler = (id: number, attempts: number, res: express.Response) => void
 
 /** Mode 1 — all items succeed immediately. */
 function strategyAllSuccess(id: number, _attempts: number, res: express.Response): void {
-  res.json(items[id]);
+  setTimeout(() => res.json(items[id]), 20);
 }
 
 /** Mode 2 — mixed errors and delays based on ID range. */
