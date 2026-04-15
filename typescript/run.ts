@@ -18,6 +18,11 @@ if (!urlsRes.ok) {
   process.exit(1);
 }
 const urls: string[] = await urlsRes.json() as string[];
+
+const limitsRes = await fetch(`${SERVER}/limits`);
+const limits = await limitsRes.json() as { maxConcurrent: number; maxRequestsPerSecond: number };
+const { maxConcurrent, maxRequestsPerSecond } = limits;
+
 await fetch(`${SERVER}/reset`, { method: "POST" });
 
 console.log(`Solution: ${solutionPath}`);
@@ -26,8 +31,8 @@ console.log(`Fetching ${urls.length} URLs...\n`);
 const start = performance.now();
 try {
   const results = await fetchAll(urls, {
-    maxConcurrent: 10,
-    maxRequestsPerSecond: 15,
+    maxConcurrent,
+    maxRequestsPerSecond,
   });
 
   const elapsed = ((performance.now() - start) / 1000).toFixed(2);
@@ -50,12 +55,26 @@ try {
       console.log(`  [${i}] ???    ${JSON.stringify(r)}`);
     }
   }
-
-  const statsRes = await fetch(`${SERVER}/stats`);
-  const stats = await statsRes.json();
-  console.log("\nServer stats:", JSON.stringify(stats, null, 2));
 } catch (err) {
   const elapsed = ((performance.now() - start) / 1000).toFixed(2);
   console.error(`\nfetchAll threw after ${elapsed}s:`, err);
+  process.exit(1);
+}
+
+const statsRes = await fetch(`${SERVER}/stats`);
+const stats = await statsRes.json() as Record<string, any>;
+const { attemptCounts: _, ...printStats } = stats;
+console.log(`\nServer stats: ${JSON.stringify(printStats, null, 2)}`);
+
+let failed = false;
+if (stats.rateLimitViolations > 0) {
+  failed = true;
+  console.log(`FAIL: rate limit violated (${stats.rateLimitViolations} requests rejected with 429)`);
+}
+if (stats.concurrencyViolations > 0) {
+  failed = true;
+  console.log(`FAIL: concurrency limit violated (${stats.concurrencyViolations} requests exceeded max ${maxConcurrent} in-flight)`);
+}
+if (failed) {
   process.exit(1);
 }
