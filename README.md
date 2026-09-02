@@ -20,6 +20,8 @@ For Python, open up `python/solution.py`
 
 For Typescript, open up `typescript/solution.py`
 
+For Go, open up `go/solution.go`
+
 ### How to Run Your Solution
 
 First, make sure your server from above is running in another terminal window.
@@ -41,6 +43,12 @@ uv run run.py                               # default: ./solution.py
 uv run run.py path/to/solution.py           # or specify a file
 ```
 
+**Go**
+```bash
+cd go
+go run .                                    # runs go/solution.go
+```
+
 Use `run` to iterate on your solution — it prints each result so you can see
 what's happening. Use the test harness when you're ready to validate.
 
@@ -53,4 +61,9 @@ console.log("foo")
 **Python**
 ```python
 print("bar")
+```
+
+**Go**
+```go
+fmt.Println("baz")
 ```
